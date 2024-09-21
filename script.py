@@ -3,6 +3,7 @@ import whisper
 import torch
 import os
 import re
+import warnings
 
 def sanitize_filename(filename):
     # Remove invalid characters for filenames
@@ -11,15 +12,14 @@ def sanitize_filename(filename):
 def main():
     url = input("Enter YouTube video URL: ")
 
-
     ydl_opts = {
         'format': 'worstaudio/worst',  # Download the lowest quality audio only
         'outtmpl': 'audio.%(ext)s',
         'noplaylist': True,
         'quiet': True,
-        'postprocessors': [{  # Ensure we get an audio file in a common format
+        'postprocessors': [{  # Ensure we get an audio file in a fast-to-process format
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
+            'preferredcodec': 'wav',  # Use WAV for faster processing
             'preferredquality': '64',  # Lower quality for faster download
         }],
     }
@@ -33,7 +33,7 @@ def main():
     # Sanitize the video title to create a valid filename
     sanitized_title = sanitize_filename(video_title)
 
-    audio_file = 'audio.mp3'  # Since we set preferredcodec to mp3
+    audio_file = 'audio.wav'  # Since we set preferredcodec to wav
 
     if not os.path.exists(audio_file):
         print("Error: Audio file not found.")
@@ -43,10 +43,21 @@ def main():
     print(f"Using device: {device}")
 
     print("Loading Whisper model...")
-    model = whisper.load_model("small", device=device)  # Use a better model for accuracy
+    # Suppress the FutureWarning
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    # Use a smaller model for faster transcription
+    model = whisper.load_model("base", device=device)
 
     print("Transcribing audio...")
-    result = model.transcribe(audio_file, fp16=False if device == "cpu" else True)
+    # Set parameters to speed up transcription
+    result = model.transcribe(
+        audio_file,
+        fp16=False if device == "cpu" else True,
+        condition_on_previous_text=False,  # Speeds up decoding
+        beam_size=1,  # Simplifies the search
+        best_of=1,    # Reduces the number of candidates
+        verbose=True 
+    )
     transcription = result['text']
 
     # Create the transcription filename using the sanitized video title
